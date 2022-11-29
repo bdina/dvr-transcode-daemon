@@ -1,0 +1,97 @@
+plugins {
+  id 'compiler.native-image'
+  id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+
+apply plugin: 'scala'
+apply plugin: 'application'
+
+repositories {
+    flatDir {
+        dirs 'lib'
+    }
+    mavenCentral()
+    maven {
+        url 'https://mvnrepository.com/artifact'
+    }
+}
+
+ext {
+    scala_maj = '2.13'
+    scala_ver = "${scala_maj}.10"
+    akka_ver = '2.6.20'
+}
+
+dependencies {
+    implementation group: 'org.scala-lang' , name: 'scala-library'  , version: scala_ver
+    implementation group: 'org.scala-lang' , name: 'scala-compiler' , version: scala_ver
+    implementation group: 'org.scala-lang' , name: 'scala-reflect'  , version: scala_ver
+
+    implementation group: 'com.typesafe.akka', name: "akka-actor-typed_${scala_maj}", version: akka_ver
+    implementation group: 'com.typesafe.akka', name: "akka-stream_${scala_maj}", version: akka_ver
+
+    implementation group: 'org.jcodec', name: 'jcodec', version: '0.2.5'
+
+    implementation group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.36'
+
+    testImplementation group: 'org.scalatest', name: "scalatest_${scala_maj}", version: '3.2.9'
+    testImplementation group: 'org.scalactic', name: "scalactic_${scala_maj}", version: '3.2.9'
+
+    testImplementation group: 'junit', name: 'junit', version: '4.13.2'
+    testImplementation group: 'org.scalatestplus', name: "junit-4-13_${scala_maj}", version: '3.2.9.0'
+}
+
+version = '1.0.0'
+
+application {
+    mainClass.set("app.TranscodeDaemon")
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE // allow duplicates
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDir 'src/main/resources'
+                exclude '**/*.sample'
+        }
+    }
+}
+
+task repl(type:JavaExec) {
+    mainClass = "scala.tools.nsc.MainGenericRunner"
+    classpath = sourceSets.main.runtimeClasspath
+    standardInput System.in
+    args '-usejavacp'
+}
+
+shadowJar {
+    sourceSets {
+        main {
+            resources {
+                srcDirs "src/main/resources", "src/main/app"
+            }
+        }
+    }
+    append('reference.conf')
+    classifier = ''
+}
+
+compileScala {
+    scalaCompileOptions.additionalParameters = [
+        "-feature"
+      , "-deprecation"
+      , "-unchecked"
+      , "-Xlint"
+      , "-Xfatal-warnings"
+      , "-Xsource:3"
+      , "-Ystatistics"
+      , "-release"
+      , "17"
+    ]
+}
