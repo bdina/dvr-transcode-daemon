@@ -1,12 +1,12 @@
 package app
 
-import akka.actor.typed.scaladsl.{ AbstractBehavior, ActorContext, Behaviors }
-import akka.actor.typed.{ ActorRef, ActorSystem, Behavior }
-//import akka.util.Timeout
+import org.apache.pekko.actor.typed.scaladsl.{ AbstractBehavior, ActorContext, Behaviors }
+import org.apache.pekko.actor.typed.{ ActorRef, ActorSystem, Behavior }
+//import org.apache.pekko.util.Timeout
 
-import akka.stream._
-import akka.stream.scaladsl._
-//import akka.NotUsed
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.scaladsl._
+//import org.apache.pekko.NotUsed
 
 import scala.concurrent.duration._
 
@@ -47,7 +47,7 @@ object FsNotify {
   private final case class FsQueueResponse(response: FsQueue.Response) extends Command
 
   object FsQueue {
-    implicit val system = AppContext.system
+    implicit val system: ActorSystem[app.TranscodeDaemon.Command] = AppContext.system
 
     val bufferSize = 1000
 
@@ -129,8 +129,8 @@ object FsNotify {
 
     case class Enqueue(p: Path, replyTo: ActorRef[FsQueue.Response])
 
-    import akka.actor.typed.scaladsl.AskPattern._
-    import akka.util.Timeout
+    import org.apache.pekko.actor.typed.scaladsl.AskPattern._
+    import org.apache.pekko.util.Timeout
     import scala.concurrent.Future
     val queue = Source
       .queue[FsQueue.Enqueue](bufferSize)
@@ -311,7 +311,7 @@ object TranscodeDaemon extends App {
     }
   }
 
-  implicit val system = AppContext.system
+  implicit val system: ActorSystem[app.TranscodeDaemon.Command] = AppContext.system
 
   val path = if (args.length > 0) args(0) else "/tmp"
 
@@ -364,7 +364,7 @@ case class FFMpegDelegate(
 
   var proc: Option[Process] = None
 
-  implicit val ec = scala.concurrent.ExecutionContext.global
+  implicit val ec: scala.concurrent.ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
 
   override def onMessage(message: Request): Behavior[Request] = message match {
     case Request.Status(sender) =>
