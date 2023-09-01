@@ -1,6 +1,7 @@
 plugins {
   id 'compiler.native-image'
-  id 'com.github.johnrengelman.shadow' version '8.1.0'
+  id 'com.github.johnrengelman.shadow' version '8.1.1'
+  id 'com.palantir.git-version' version '1.0.0'
 }
 
 apply plugin: 'scala'
@@ -41,7 +42,7 @@ dependencies {
     testImplementation group: 'org.scalatestplus', name: "junit-4-13_${scala_maj}", version: '3.2.9.0'
 }
 
-version = '1.0.0'
+version = gitVersion()
 
 application {
     mainClass.set("app.TranscodeDaemon")
@@ -71,12 +72,16 @@ task repl(type:JavaExec) {
 }
 
 shadowJar {
+    archiveClassifier = ''
     sourceSets {
         main {
             resources {
                 srcDirs "src/main/resources", "src/main/app"
             }
         }
+    }
+    manifest {
+        attributes 'App-Version': gitVersion()
     }
     append('reference.conf')
 }
@@ -91,6 +96,6 @@ compileScala {
       , "-Xsource:3"
       , "-Ystatistics"
       , "-release"
-      , "19"
+      , "20"
     ]
 }
