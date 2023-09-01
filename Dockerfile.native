@@ -1,4 +1,4 @@
-# To build image run `docker build --tag handbrake-daemon:<version> .`
+# To build image run `docker build --tag transcoder:<version> .`
 
 # Multi-stage image ... creates intermediate layer(s) for doing the graalvm native
 # build (this is discarded by docker post-build)
@@ -79,7 +79,7 @@ RUN rm -rf /tmp/*
 ARG GRAALVM_WORKDIR
 
 ENV GRAALVM_WORKDIR=${GRAALVM_WORKDIR}
-ENV APP_HOME=/opt/handbrake-daemon
+ENV APP_HOME=/opt/transcoder
 ENV PATH=${APP_HOME}/bin:${PATH}
 
 WORKDIR ${APP_HOME}
