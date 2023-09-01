@@ -37,7 +37,7 @@ class NativeImage extends DefaultTask {
         , "-R:MaxHeapSize=${maxHeap}m"
         , "-R:MaxNewSize=${maxNew}m"
         ]
-        def source = [ '-jar', "${project.buildDir}/libs/handbrake-daemon-${project.version}.jar" ]
+        def source = [ '-jar', "${project.buildDir}/libs/${project.name}-${project.version}.jar" ]
         def command = EXECUTABLE + parameters*.arg + heap + source
         logger.lifecycle "Executing native-image command: '${command.join(' ')}'"
 
