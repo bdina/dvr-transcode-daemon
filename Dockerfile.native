@@ -7,7 +7,7 @@ FROM ubuntu:22.04 AS build
 ARG JAVA_VERSION=20.0.2
 ARG GRAALVM_WORKDIR=/graalvm/src/project
 
-ARG SCALA_VERSION=2.13.11
+ARG SCALA_VERSION=2.13.12
 ARG GRADLE_VERSION=8.3
 
 # Install tools required for project
