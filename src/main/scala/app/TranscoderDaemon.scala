@@ -2,11 +2,9 @@ package app
 
 import org.apache.pekko.actor.typed.scaladsl.{ AbstractBehavior, ActorContext, Behaviors }
 import org.apache.pekko.actor.typed.{ ActorRef, ActorSystem, Behavior }
-//import org.apache.pekko.util.Timeout
 
 import org.apache.pekko.stream._
 import org.apache.pekko.stream.scaladsl._
-//import org.apache.pekko.NotUsed
 
 import scala.concurrent.duration._
 
@@ -26,9 +24,7 @@ object FsMonitor {
   sealed trait Response
   final case class Ack(path: Path, from: ActorRef[Watch]) extends Response
 
-  def apply(): Behavior[Watch] = exec()
-
-  private def exec(): Behavior[Watch] = Behaviors.receive {
+  def apply(): Behavior[Watch] = Behaviors.receive {
     case (context, message) =>
       val worker = context.spawn(FsNotify(message.path, message.ext), "FsNotify-worker")
       context.log.info(s"[fsmonitor:exec] created new worker $worker for path ${message.path}")
@@ -56,7 +52,7 @@ object FsNotify {
       override val context: ActorContext[QueueProxy.Request]
     , file: File
     ) extends AbstractBehavior[QueueProxy.Request](context) {
-      val log = LoggerFactory.getLogger(this.getClass)
+      val log = context.log
 
       val ffmpegResponseMapper: ActorRef[FFMpegDelegate.Response] =
         context.messageAdapter(resp => QueueProxy.FFMpegResponse(resp))
@@ -64,13 +60,12 @@ object FsNotify {
       val worker = {
         val uuid = java.util.UUID.randomUUID
         val worker = context.spawn(FFMpegDelegate(file), s"ffmpeg-delegate-${uuid}")
-        context.log.info(s"[queue:proxy] send convert message to worker $worker")
+        log.info(s"[queue:proxy] send convert message to worker $worker")
         worker ! FFMpegDelegate.Request.Start(replyTo=ffmpegResponseMapper)
         worker
       }
 
-      val killSwitch =
-        KillSwitches.shared(s"queue-proxy-killswitch-${java.util.UUID.randomUUID}")
+      val killSwitch = KillSwitches.shared(s"queue-proxy-killswitch-${java.util.UUID.randomUUID}")
       log.info("[queue:proxy] via kill switch {}", killSwitch)
       Source
         .tick(10.second, 10.second, ())
@@ -82,18 +77,18 @@ object FsNotify {
 
       var parent: Option[ActorRef[QueueProxy.Response]] = None
 
-      def onMessage(msg: QueueProxy.Request) = msg match {
+      override def onMessage(msg: QueueProxy.Request) = msg match {
         case QueueProxy.Request.Notify(replyTo) =>
           parent = Some(replyTo)
           Behaviors.same
         case QueueProxy.FFMpegResponse(resp) =>
-          context.log.info(s"[queue:proxy] received response -> $resp")
+          log.info(s"[queue:proxy] received response -> $resp")
           resp match {
             case FFMpegDelegate.Response.Status(code,_) if code != 0 =>
-              context.log.info(s"[queue:proxy] status -> $code")
+              log.info(s"[queue:proxy] status -> $code")
               Behaviors.same
             case FFMpegDelegate.Response.Status(code,replyTo) =>
-              context.log.info(s"[queue:proxy] signal stop -> $replyTo")
+              log.info(s"[queue:proxy] signal stop -> $replyTo")
               replyTo ! FFMpegDelegate.Request.Stop(replyTo=ffmpegResponseMapper)
               parent.map(ref => ref ! QueueProxy.Response.Complete)
               killSwitch.shutdown()
@@ -125,7 +120,7 @@ object FsNotify {
     sealed trait Response
     object Response {
       case class Complete(p: Path) extends Response
-    }
+   }
 
     case class Enqueue(p: Path, replyTo: ActorRef[FsQueue.Response])
 
@@ -157,15 +152,13 @@ object FsNotify {
 
           Future.successful(p.toFile)
       }
-      .toMat(Sink.foreach(p => println(s"[queue] completed $p")))(Keep.left)
+      .toMat(Sink.foreach(p => system.log.info(s"[queue] completed $p")))(Keep.left)
       .run()
 
     def +=(e: FsQueue.Enqueue): Unit = queue.offer(e)
   }
 
-  def apply(path: Path, ext: Seq[String]): Behavior[Command] = schedule(path, ext)
-
-  private def schedule(path: Path, ext: Seq[String]): Behavior[Command] =
+  def apply(path: Path, ext: Seq[String]): Behavior[Command] =
     Behaviors.setup[Command] { case context =>
       val fsResponseMapper: ActorRef[FsScan.Response] =
         context.messageAdapter(resp => FsScanResponse(resp))
@@ -238,9 +231,7 @@ object FsScan {
   sealed trait Response
   final case class Ack(paths: Seq[Path], from: ActorRef[Scan]) extends Response
 
-  def apply(ext: Seq[String]): Behavior[Command] = standby(ext)
-
-  private def standby(ext: Seq[String]): Behavior[Command] = Behaviors.receive {
+  def apply(ext: Seq[String]): Behavior[Command] = Behaviors.receive {
     case (context, message) =>
       message match {
         case Scan(root,replyTo) =>
@@ -450,58 +441,54 @@ case class FFMpegDelegate(
   }
 }
 
-object EmbeddedTranscoder {
-  import org.jcodec.api.transcode._
-  def execute(): Unit = {
-    val args = Array[String]("foo","bar")
-    TranscodeMain.main(args)
-  }
+object EmbeddedTranscoder extends App {
 
   import org.jcodec.api.transcode.SinkImpl
   import org.jcodec.api.transcode.SourceImpl
   import org.jcodec.api.transcode.Transcoder
   import org.jcodec.common.Codec
-//  import org.jcodec.common.DemuxerTrack
   import org.jcodec.common.Format
   import org.jcodec.common.JCodecUtil
-  import org.jcodec.common.Tuple.{triple,_3}
+  import org.jcodec.common.Tuple.{triple,_3 => Triple}
   import org.jcodec.common.TrackType
 
-  def main(args: Array[String]): Unit = {
-    import scala.jdk.CollectionConverters._
+  import org.slf4j.LoggerFactory
 
-    val input = Paths.get("ts/sample.ts").toFile
-    val output = Paths.get("/tmp/sample.m4v").toFile
+  import scala.jdk.CollectionConverters._
 
-    val inFormat = JCodecUtil.detectFormat(input)
-    val demuxer = JCodecUtil.createM2TSDemuxer(input, TrackType.VIDEO)
+  val log = LoggerFactory.getLogger(this.getClass)
 
-    println(s"input video ? ${inFormat.isVideo} (demuxer ${demuxer.v0} | ${demuxer.v1})")
+  val input = Paths.get("ts/sample.ts").toFile
+  val output = Paths.get("/tmp/sample.m4v").toFile
 
-    val tracks = demuxer.v1.getVideoTracks.asScala
-    val trackNo = tracks.foldLeft (0) { case (acc, track) =>
-      val decoder = JCodecUtil.detectDecoder(track.nextFrame.getData)
-      println(s"track decoder - ${decoder}")
-      acc
-    }
+  val inFormat = JCodecUtil.detectFormat(input)
+  val demuxer = JCodecUtil.createM2TSDemuxer(input, TrackType.VIDEO)
 
-    println(s"transcode $input -> $output")
-    println(s"  input ${Codec.MPEG2} | ${demuxer.v0} | ${trackNo}")
+  log.info(s"input video ? ${inFormat.isVideo} (demuxer ${demuxer.v0} | ${demuxer.v1})")
 
-    val videoCodec: _3[Integer,Integer,Codec] = triple(demuxer.v0, trackNo, Codec.MPEG2)
-    val audioCodec: _3[Integer,Integer,Codec] = triple(0, 0, Codec.AC3)
-    val source = new SourceImpl(input.getAbsolutePath, inFormat/*Format.MPEG_TS*/, videoCodec, audioCodec)
-    val sink = new SinkImpl(output.getAbsolutePath, Format.H264, Codec.H264, Codec.AAC)
-
-    val builder = Transcoder.newTranscoder()
-    builder.addSource(source)
-    builder.addSink(sink)
-//    builder.setAudioMapping(0, 0, false)
-//    builder.setVideoMapping(0, 0, false)
-
-    val transcoder = builder.create()
-    transcoder.transcode()
-
-    println("normal termination")
+  val tracks = demuxer.v1.getVideoTracks.asScala
+  val trackNo = tracks.foldLeft (0) { case (acc, track) =>
+    val decoder = JCodecUtil.detectDecoder(track.nextFrame.getData)
+    log.info(s"track decoder - ${decoder}")
+    acc
   }
+
+  log.info(s"transcode $input -> $output")
+  log.info(s"  input ${Codec.MPEG2} | ${demuxer.v0} | ${trackNo}")
+
+  val videoCodec: Triple[Integer,Integer,Codec] = triple(demuxer.v0, trackNo, Codec.MPEG2)
+  val audioCodec: Triple[Integer,Integer,Codec] = triple(0, 0, Codec.AC3)
+  val source = new SourceImpl(input.getAbsolutePath, inFormat/*Format.MPEG_TS*/, videoCodec, audioCodec)
+  val sink = new SinkImpl(output.getAbsolutePath, Format.H264, Codec.H264, Codec.AAC)
+
+  val builder = Transcoder.newTranscoder()
+  builder.addSource(source)
+  builder.addSink(sink)
+  builder.setAudioMapping(0, 0, false)
+  builder.setVideoMapping(0, 0, false)
+
+  val transcoder = builder.create()
+  transcoder.transcode()
+
+  log.info("normal termination")
 }
